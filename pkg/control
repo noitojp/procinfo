@@ -1,0 +1,21 @@
+Source: procinfo
+Priority: optional
+Maintainer: Nobutaka Ito <noitojp@gmail.com>
+Build-Depends: debhelper (>= 7.0.50~)
+Standards-Version: 3.8.4
+Section: libs
+Homepage: no url
+
+Package: procinfo-dev
+Section: libdevel
+Architecture: any
+Depends: procinfo (= ${binary:Version}), ncore-dev
+Description: procinfo lib.
+ procinfo lib.
+
+Package: procinfo
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ncore
+Description: procinfo lib for devel.
+ procinfo lib for devel.
