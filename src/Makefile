@@ -1,7 +1,7 @@
 MK_CFG_DIR = /home/y/share/make_cfg
 include $(MK_CFG_DIR)/make.defs
 
-LIBNAME = procinfo
+LIBNAME = nprocinfo
 LIBVERSION=1
 CSRC = procinfo.c
 
