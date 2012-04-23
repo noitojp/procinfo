@@ -69,11 +69,12 @@ int load_procinfo(procinfo_t *dest,const char *path)
 		goto error;
 	}
 
-	dest->num = ix;
 	if( fp != NULL ){
 		fclose(fp); fp = NULL;
 	}
 
+	dest->line = line;
+	dest->num = ix;
 	return(dest->num);
 
  error:
@@ -83,6 +84,7 @@ int load_procinfo(procinfo_t *dest,const char *path)
 
 	free(line); line = NULL;
 	dest->num = 0;
+	dest->line = NULL;
 	return(0);
 }
 
@@ -91,7 +93,7 @@ const procline_t* get_procline(const procinfo_t *src,const char *str)
 	const procline_t *rc = NULL;
 	procline_t line;
 
-	if( NULL == src || NULL == str ){
+	if( NULL == src || NULL == src->line || NULL == str ){
 		return(NULL);
 	}
 
@@ -126,7 +128,7 @@ const procline_t* get_procline_by_bin(const procinfo_t *src,const char *tgt)
 {
 	int ix;
 
-	if( NULL == src || NULL == tgt ){
+	if( NULL == src || NULL == src->line || NULL == tgt ){
 		return(NULL);
 	}
 
@@ -143,7 +145,7 @@ const procline_t* get_procline_by_name(const procinfo_t *src,const char *tgt)
 {
 	int ix;
 
-	if( NULL == src || NULL == tgt ){
+	if( NULL == src || NULL == src->line || NULL == tgt ){
 		return(NULL);
 	}
 
@@ -160,7 +162,7 @@ void destroy_procinfo(procinfo_t *procinfo)
 {
 	int ix;
 
-	if( NULL == procinfo ){
+	if( NULL == procinfo || NULL == procinfo->line ){
 		return;
 	}
 
@@ -174,10 +176,6 @@ void destroy_procinfo(procinfo_t *procinfo)
 static const procline_t* _find_procline(const procinfo_t *src,const procline_t *tgt)
 {
 	int ix;
-
-	if(NULL == src || NULL == tgt ){
-		return(NULL);
-	}
 
 	for( ix = 0; ix < src->num; ix++ ){
 		if( _cmp_procline(&src->line[ix],tgt) == 0 ){
@@ -197,10 +195,6 @@ static int _parse_procinfo_line(procline_t *dest,const char *str)
 	int ret;
 	char **dest_ptr;
 	valid_func_t valid_func_ptr = NULL;
-
-	if( NULL == dest || NULL == str ){
-		return(-1);
-	}
 
 	if( !_is_active_line(str) ){
 		return(0);
