@@ -20,6 +20,8 @@ enum{
 
 typedef int (*valid_func_t)(const char*);
 
+static const procline_t* _find_procline(const procinfo_t *src,const procline_t *tgt);
+static int _parse_procinfo_line(procline_t *dest,const char *str);
 static int _cmp_procline(const procline_t *p1,const procline_t *p2);
 static int _is_active_line(const char *str);
 static int _get_filep_line_num(FILE *fp);
@@ -56,7 +58,7 @@ int load_procinfo(procinfo_t *dest,const char *path)
 
 	memset(line,'\0',sizeof(procline_t) * dest->num);
 	for( ix = 0; ix < dest->num && fgets(buf,sizeof(buf),fp); ){
-		if( parse_procinfo_line(&line[ix],buf) > 0 ){
+		if( _parse_procinfo_line(&line[ix],buf) > 0 ){
 			line[ix].index = ix;
 			ix++;
 		}
@@ -84,7 +86,109 @@ int load_procinfo(procinfo_t *dest,const char *path)
 	return(0);
 }
 
-int parse_procinfo_line(procline_t *dest,const char *str)
+const procline_t* get_procline(const procinfo_t *src,const char *str)
+{
+	const procline_t *rc = NULL;
+	procline_t line;
+
+	if( NULL == src || NULL == str ){
+		return(NULL);
+	}
+
+	memset(&line,'\0',sizeof(line));
+	if( _parse_procinfo_line(&line,str) <= 0 ){
+		return(NULL);
+	}
+
+	rc = _find_procline(src,&line);
+	_destroy_procline(&line);
+	return(rc);
+}
+
+int get_procline_str(char *dest,const procline_t *src)
+{
+	int rc;
+
+	if( NULL == dest || NULL == src ){
+		return(-1);
+	}
+
+	rc = sprintf(dest,"%s %s %s %s %s %s",src->name
+										,src->svr
+										,src->ioport_str
+										,src->cmdport_str
+										,src->bin_name
+										,src->attr);
+	return(rc);
+}
+
+const procline_t* get_procline_by_bin(const procinfo_t *src,const char *tgt)
+{
+	int ix;
+
+	if( NULL == src || NULL == tgt ){
+		return(NULL);
+	}
+
+	for( ix = 0; ix < src->num; ix++ ){
+		if( strcmp(src->line[ix].bin_name,tgt) == 0 ){
+			return(&src->line[ix]);
+		}
+	}
+
+	return(NULL);
+}
+
+const procline_t* get_procline_by_name(const procinfo_t *src,const char *tgt)
+{
+	int ix;
+
+	if( NULL == src || NULL == tgt ){
+		return(NULL);
+	}
+
+	for( ix = 0; ix < src->num; ix++ ){
+		if( strcmp(src->line[ix].name,tgt) == 0 ){
+			return(&src->line[ix]);
+		}
+	}
+
+	return(NULL);
+}
+
+void destroy_procinfo(procinfo_t *procinfo)
+{
+	int ix;
+
+	if( NULL == procinfo ){
+		return;
+	}
+
+	for(ix = 0; ix < procinfo->num; ix++ ){
+		_destroy_procline(&procinfo->line[ix]);
+	}
+
+	return;
+}
+
+static const procline_t* _find_procline(const procinfo_t *src,const procline_t *tgt)
+{
+	int ix;
+
+	if(NULL == src || NULL == tgt ){
+		return(NULL);
+	}
+
+	for( ix = 0; ix < src->num; ix++ ){
+		if( _cmp_procline(&src->line[ix],tgt) == 0 ){
+			return(&src->line[ix]);
+		}
+	}
+
+	return(NULL);
+}
+
+static int _parse_procinfo_line(procline_t *dest,const char *str)
 {
 	int start;
 	int len;
@@ -152,89 +256,6 @@ int parse_procinfo_line(procline_t *dest,const char *str)
  error:
 	_destroy_procline(dest);
 	return(0);
-}
-
-const procline_t* get_procline(const procinfo_t *src,const procline_t *tgt)
-{
-	int ix;
-
-	if(NULL == src || NULL == tgt ){
-		return(NULL);
-	}
-
-	for( ix = 0; ix < src->num; ix++ ){
-		if( _cmp_procline(&src->line[ix],tgt) == 0 ){
-			return(&src->line[ix]);
-		}
-	}
-
-	return(NULL);
-}
-
-int get_procline_str(char *dest,const procline_t *src)
-{
-	int rc;
-
-	if( NULL == dest || NULL == src ){
-		return(-1);
-	}
-
-	rc = sprintf(dest,"%s %s %s %s %s %s",src->name
-										,src->svr
-										,src->ioport_str
-										,src->cmdport_str
-										,src->bin_name
-										,src->attr);
-	return(rc);
-}
-
-const procline_t* get_procline_by_bin(const procinfo_t *src,const char *tgt)
-{
-	int ix;
-
-	if( NULL == src || NULL == tgt ){
-		return(NULL);
-	}
-
-	for( ix = 0; ix < src->num; ix++ ){
-		if( strcmp(src->line[ix].bin_name,tgt) == 0 ){
-			return(&src->line[ix]);
-		}
-	}
-
-	return(NULL);
-}
-
-const procline_t* get_procline_by_name(const procinfo_t *src,const char *tgt)
-{
-	int ix;
-
-	if( NULL == src || NULL == tgt ){
-		return(NULL);
-	}
-
-	for( ix = 0; ix < src->num; ix++ ){
-		if( strcmp(src->line[ix].name,tgt) == 0 ){
-			return(&src->line[ix]);
-		}
-	}
-
-	return(NULL);
-}
-
-void destroy_procinfo(procinfo_t *procinfo)
-{
-	int ix;
-
-	if( NULL == procinfo ){
-		return;
-	}
-
-	for(ix = 0; ix < procinfo->num; ix++ ){
-		_destroy_procline(&procinfo->line[ix]);
-	}
-
-	return;
 }
 
 static int _cmp_procline(const procline_t *p1,const procline_t *p2)
