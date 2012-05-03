@@ -20,52 +20,54 @@ enum{
 
 typedef int (*valid_func_t)(const char*);
 
-static const procline_t* _find_procline(const procinfo_t *src,const procline_t *tgt);
-static int _parse_procinfo_line(procline_t *dest,const char *str);
-static int _cmp_procline(const procline_t *p1,const procline_t *p2);
+static const procinfo_t* _find_procinfo(const procinfo_t *src,const procinfo_t *tgt);
+static int _parse_procinfo_line(procinfo_t *dest,const char *str);
+static int _cmp_procinfo(const procinfo_t *p1,const procinfo_t *p2);
 static int _is_active_line(const char *str);
 static int _get_filep_line_num(FILE *fp);
-static int _get_column(const char *str,int *start,int *len);
+static int _get_column_index(char **dest,char *src,int maxcol);
 static int _is_not_null_or_empty(const char *str);
 static int _validate_port(const char *str);
-static void _destroy_procline(procline_t *procline);
+static void _destroy_procinfo(procinfo_t *procinfo);
 
-int load_procinfo(procinfo_t *dest,const char *path)
+int load_procinfo(procinfo_t **dest,const char *path)
 {
-	procline_t *line = NULL;
 	FILE *fp = NULL;
-	char buf[1024];
+	char buf[4096];
+	int num = 0;
 	int ix;
 
 	if( NULL == dest || NULL == path ){
 		goto error;
 	}
 
+	*dest = NULL;
 	fp = fopen(path,"r");
 	if( NULL == fp ){
 		goto error;
 	}
 
-	dest->num = _get_filep_line_num(fp);
-	if( dest->num <= 0 ){
+	num = _get_filep_line_num(fp);
+	if( num <= 0 ){
 		goto error;
 	}
 
-	line = (procline_t*)malloc(sizeof(procline_t) * dest->num);
-	if( NULL == line ){
+	*dest = (procinfo_t*)malloc(sizeof(procinfo_t) * (num + 1));
+	if( NULL == *dest ){
 		goto error;
 	}
 
-	memset(line,'\0',sizeof(procline_t) * dest->num);
-	for( ix = 0; ix < dest->num && fgets(buf,sizeof(buf),fp); ){
-		if( _parse_procinfo_line(&line[ix],buf) > 0 ){
-			line[ix].index = ix;
-			ix++;
-		}
+	memset(*dest,'\0',sizeof(procinfo_t) * (num + 1));
+	for( ix = 0; ix < num && fgets(buf,sizeof(buf),fp); ){
+		if( nax_rstrip(buf,"\r\n") <= 0 ){ continue; }
+		if( _parse_procinfo_line(dest[ix],buf) <= 0 ){ continue; }
+		(*dest)[ix].index = ix;
+		ix++;
 	}
 
+	(dest[ix])->valid = 0;
+	(dest[ix])->line = NULL;
 	if( ferror(fp) ){
-		dest->num = 0;
 		goto error;
 	}
 
@@ -73,27 +75,23 @@ int load_procinfo(procinfo_t *dest,const char *path)
 		fclose(fp); fp = NULL;
 	}
 
-	dest->line = line;
-	dest->num = ix;
-	return(dest->num);
+	return(ix);
 
  error:
 	if( fp != NULL ){
 		fclose(fp); fp = NULL;
 	}
 
-	free(line); line = NULL;
-	dest->num = 0;
-	dest->line = NULL;
+	free(*dest); *dest = NULL;
 	return(0);
 }
 
-const procline_t* get_procline(const procinfo_t *src,const char *str)
+const procinfo_t* get_procinfo(const procinfo_t *src,const char *str)
 {
-	const procline_t *rc = NULL;
-	procline_t line;
+	const procinfo_t *rc = NULL;
+	procinfo_t line;
 
-	if( NULL == src || NULL == src->line || NULL == str ){
+	if( NULL == src || NULL == str ){
 		return(NULL);
 	}
 
@@ -102,12 +100,12 @@ const procline_t* get_procline(const procinfo_t *src,const char *str)
 		return(NULL);
 	}
 
-	rc = _find_procline(src,&line);
-	_destroy_procline(&line);
+	rc = _find_procinfo(src,&line);
+	_destroy_procinfo(&line);
 	return(rc);
 }
 
-int get_procline_str(char *dest,const procline_t *src)
+int get_procinfo_str(char *dest,const procinfo_t *src)
 {
 	int rc;
 
@@ -124,34 +122,34 @@ int get_procline_str(char *dest,const procline_t *src)
 	return(rc);
 }
 
-const procline_t* get_procline_by_bin(const procinfo_t *src,const char *tgt)
+const procinfo_t* get_procinfo_by_bin(const procinfo_t *src,const char *tgt)
 {
 	int ix;
 
-	if( NULL == src || NULL == src->line || NULL == tgt ){
+	if( NULL == src || NULL == tgt ){
 		return(NULL);
 	}
 
-	for( ix = 0; ix < src->num; ix++ ){
-		if( strcmp(src->line[ix].bin_name,tgt) == 0 ){
-			return(&src->line[ix]);
+	for( ix = 0; src[ix].line != NULL; ix++ ){
+		if( strcmp(src[ix].bin_name,tgt) == 0 ){
+			return(&src[ix]);
 		}
 	}
 
 	return(NULL);
 }
 
-const procline_t* get_procline_by_name(const procinfo_t *src,const char *tgt)
+const procinfo_t* get_procinfo_by_name(const procinfo_t *src,const char *tgt)
 {
 	int ix;
 
-	if( NULL == src || NULL == src->line || NULL == tgt ){
+	if( NULL == src || NULL == tgt ){
 		return(NULL);
 	}
 
-	for( ix = 0; ix < src->num; ix++ ){
-		if( strcmp(src->line[ix].name,tgt) == 0 ){
-			return(&src->line[ix]);
+	for( ix = 0; src[ix].line != NULL; ix++ ){
+		if( strcmp(src[ix].name,tgt) == 0 ){
+			return(&src[ix]);
 		}
 	}
 
@@ -162,48 +160,53 @@ void destroy_procinfo(procinfo_t *procinfo)
 {
 	int ix;
 
-	if( NULL == procinfo || NULL == procinfo->line ){
+	if( NULL == procinfo ){
 		return;
 	}
 
-	for(ix = 0; ix < procinfo->num; ix++ ){
-		_destroy_procline(&procinfo->line[ix]);
+	for(ix = 0; procinfo[ix].line != NULL; ix++ ){
+		_destroy_procinfo(&procinfo[ix]);
 	}
 
+	free(procinfo);
 	return;
 }
 
-static const procline_t* _find_procline(const procinfo_t *src,const procline_t *tgt)
+static const procinfo_t* _find_procinfo(const procinfo_t *src,const procinfo_t *tgt)
 {
 	int ix;
 
-	for( ix = 0; ix < src->num; ix++ ){
-		if( _cmp_procline(&src->line[ix],tgt) == 0 ){
-			return(&src->line[ix]);
+	for( ix = 0; src[ix].line != NULL; ix++ ){
+		if( _cmp_procinfo(&src[ix],tgt) == 0 ){
+			return(&src[ix]);
 		}
 	}
 
 	return(NULL);
 }
 
-static int _parse_procinfo_line(procline_t *dest,const char *str)
+static int _parse_procinfo_line(procinfo_t *dest,const char *src)
 {
-	int start;
-	int len;
 	int ix;
-	int jx;
 	int ret;
+	char *str;
 	char **dest_ptr;
 	valid_func_t valid_func_ptr = NULL;
+	char *index[_PROCINFO_COLUME_NUM];
 
-	if( !_is_active_line(str) ){
+	if( !_is_active_line(src) ){
 		return(0);
 	}
 
 	memset(dest,'\0',sizeof(*dest));
 	dest->valid = 0;
-	for(ix = 0, jx = 0; ix < _PROCINFO_COLUME_NUM; ix++, jx += ret ){
-		ret = _get_column(&str[jx],&start,&len);
+	str = strdup(src);
+	ret = _get_column_index(index,str,_PROCINFO_COLUME_NUM);
+	if( ret != _PROCINFO_COLUME_NUM ){
+		return(0);
+	}
+
+	for(ix = 0; ix < _PROCINFO_COLUME_NUM; ix++ ){
 		switch( ix ){
 		case _PROCINFO_NAME:
 			dest_ptr = &dest->name;
@@ -231,12 +234,7 @@ static int _parse_procinfo_line(procline_t *dest,const char *str)
 			break;
 		}
 
-		*dest_ptr = (char*)malloc(len + 1);
-		if( NULL == *dest_ptr ){
-			goto error;
-		}
-		memcpy(*dest_ptr,&str[jx + start],len);
-		(*dest_ptr)[len] = '\0';
+		*dest_ptr = index[ix];
 		if( valid_func_ptr != NULL && !valid_func_ptr(*dest_ptr) ){
 			goto error;
 		}
@@ -244,15 +242,15 @@ static int _parse_procinfo_line(procline_t *dest,const char *str)
 
 	dest->ioport = strtol(dest->ioport_str,NULL,10);
 	dest->cmdport = strtol(dest->cmdport_str,NULL,10);
+	dest->line = str;
 	dest->valid = 1;
 	return(1);
 
  error:
-	_destroy_procline(dest);
 	return(0);
 }
 
-static int _cmp_procline(const procline_t *p1,const procline_t *p2)
+static int _cmp_procinfo(const procinfo_t *p1,const procinfo_t *p2)
 {
 	int ret;
 
@@ -317,20 +315,28 @@ static int _get_filep_line_num(FILE *fp)
 	return(rc);
 }
 
-static int _get_column(const char *str,int *start,int *len)
+static int _get_column_index(char **dest,char *src,int maxcol)
 {
 	int ix;
+	int jx;
 
-	if( '\0' == *str || '\r' == *str || '\n' == *str ){
-		*start = 0;
-		*len = 0;
-		return(0);
+	for( ix = 0, jx = 0; src[ix] != '\0'; ){
+		while(  ' ' == src[ix] || '\t' == src[ix] ){
+			src[ix++] = '\0';
+		}
+
+		if( src[ix] != '\0' ){
+			if( jx < maxcol ){
+				dest[jx++] = &src[ix];
+			}
+
+			while(src[ix] != ' ' && src[ix] != '\t'){
+				ix++;
+			}
+		}
 	}
 
-	for( ix = 0; isspace(str[ix]); ix++ ){ ; }
-	for( *start = ix; !isspace(str[ix]); ix++ ){ ; }
-	*len = ix - *start;
-	return(ix);
+	return(jx);
 }
 
 static int _is_not_null_or_empty(const char *str)
@@ -355,22 +361,14 @@ static int _validate_port(const char *str)
 	return(1);
 }
 
-static void _destroy_procline(procline_t *procline)
+static void _destroy_procinfo(procinfo_t *procinfo)
 {
-	if( NULL == procline ){
+	if( NULL == procinfo ){
 		return;
 	}
 
-	free(procline->name); procline->name = NULL;
-	free(procline->svr); procline->svr = NULL;
-	free(procline->ioport_str); procline->ioport_str = NULL;
-	free(procline->cmdport_str); procline->cmdport_str = NULL;
-	free(procline->bin_name); procline->bin_name = NULL;
-	free(procline->attr); procline->attr = NULL;
-	procline->index = -1;
-	procline->valid = 0;
-	procline->ioport = -1;
-	procline->cmdport = -1;
+	free(procinfo->line); procinfo->line = NULL;
+	procinfo->valid = 0;
 	return;
 }
 
