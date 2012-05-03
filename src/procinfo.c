@@ -82,7 +82,7 @@ int load_procinfo(procinfo_t **dest,const char *path)
 		fclose(fp); fp = NULL;
 	}
 
-	free(*dest); *dest = NULL;
+	destroy_procinfo(*dest); *dest = NULL;
 	return(0);
 }
 
