@@ -15,6 +15,7 @@ enum{
 	_PROCINFO_CMDPORT,
 	_PROCINFO_BIN,
 	_PROCINFO_ATTR,
+
 	_PROCINFO_COLUME_NUM,
 };
 
@@ -44,30 +45,34 @@ int load_procinfo(procinfo_t **dest,const char *path)
 	*dest = NULL;
 	fp = fopen(path,"r");
 	if( NULL == fp ){
+		fprintf(stderr,"ERROR: can't open %s: %s\n",path,strerror(errno));
 		goto error;
 	}
 
 	num = _get_filep_line_num(fp);
 	if( num <= 0 ){
+		fprintf(stderr,"ERROR: %s has no active record\n",path);
 		goto error;
 	}
 
 	*dest = (procinfo_t*)malloc(sizeof(procinfo_t) * (num + 1));
 	if( NULL == *dest ){
+		fprintf(stderr,"ERROR: malloc: %s \n",strerror(errno));
 		goto error;
 	}
 
 	memset(*dest,'\0',sizeof(procinfo_t) * (num + 1));
 	for( ix = 0; ix < num && fgets(buf,sizeof(buf),fp); ){
 		if( nax_rstrip(buf,"\r\n") <= 0 ){ continue; }
-		if( _parse_procinfo_line(dest[ix],buf) <= 0 ){ continue; }
-		(*dest)[ix].index = ix;
+		if( _parse_procinfo_line(&((*dest)[ix]),buf) <= 0 ){ continue; }
+		((*dest)[ix]).index = ix;
 		ix++;
 	}
 
-	(dest[ix])->valid = 0;
-	(dest[ix])->line = NULL;
+	((*dest)[ix]).valid = 0;
+	((*dest)[ix]).line =NULL;
 	if( ferror(fp) ){
+		fprintf(stderr,"ERROR: can't read %s: %s\n",path,strerror(errno));
 		goto error;
 	}
 
@@ -189,21 +194,21 @@ static int _parse_procinfo_line(procinfo_t *dest,const char *src)
 {
 	int ix;
 	int ret;
-	char *str;
+	char *str = NULL;
 	char **dest_ptr;
 	valid_func_t valid_func_ptr = NULL;
 	char *index[_PROCINFO_COLUME_NUM];
 
 	if( !_is_active_line(src) ){
-		return(0);
+		goto error;
 	}
 
-	memset(dest,'\0',sizeof(*dest));
+	memset(dest,'\0',sizeof(dest));
 	dest->valid = 0;
 	str = strdup(src);
 	ret = _get_column_index(index,str,_PROCINFO_COLUME_NUM);
 	if( ret != _PROCINFO_COLUME_NUM ){
-		return(0);
+		goto error;
 	}
 
 	for(ix = 0; ix < _PROCINFO_COLUME_NUM; ix++ ){
@@ -247,6 +252,7 @@ static int _parse_procinfo_line(procinfo_t *dest,const char *src)
 	return(1);
 
  error:
+	free(str); str = NULL;
 	return(0);
 }
 
@@ -325,14 +331,12 @@ static int _get_column_index(char **dest,char *src,int maxcol)
 			src[ix++] = '\0';
 		}
 
-		if( src[ix] != '\0' ){
-			if( jx < maxcol ){
-				dest[jx++] = &src[ix];
-			}
+		if( jx < maxcol ){
+			dest[jx++] = &src[ix];
+		}
 
-			while(src[ix] != ' ' && src[ix] != '\t'){
-				ix++;
-			}
+		while( src[ix] != '\0' && src[ix] != ' ' && src[ix] != '\t' ){
+			ix++;
 		}
 	}
 
