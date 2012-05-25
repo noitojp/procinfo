@@ -2,9 +2,7 @@ nprocinfo (0.0.3) unstable; urgency=low
 
   * change interface again
 
-nprocinfo (0.0.2) unstable; urgency=low
-
-  * separate procinfo and procline
+ -- noito <noito@think>  Fri, 25 May 2012 23:24:04 +0900
 
 nprocinfo (0.0.1) unstable; urgency=low
 
