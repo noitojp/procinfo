@@ -1,3 +1,9 @@
+nprocinfo (0.0.4) unstable; urgency=low
+
+  * fix debian package.
+
+ -- Nobutaka Ito <noitojp@gmail.com>  Mon, 29 Oct 2012 14:44:17 +0900
+
 nprocinfo (0.0.3) unstable; urgency=low
 
   * fix changelog.
